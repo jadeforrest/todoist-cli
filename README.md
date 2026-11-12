@@ -228,3 +228,7 @@ python -m venv .venv && .venv/bin/pip install -e '.[dev]'
 ```
 
 The tests mock all network and `gog` calls, and run against a scratch config directory, never your real one.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
