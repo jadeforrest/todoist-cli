@@ -15,10 +15,10 @@ It also has the everyday commands: `create`, `list`, `update`, `search`, `filter
 You need Python 3.11 or newer.
 
 ```bash
-pipx install .
+pipx install git+https://github.com/jadeforrest/todoist-cli.git
 ```
 
-That installs `todoist`, plus `gog-reauth`, a helper that re-authorizes your Google account. `pip install .` inside a virtualenv works too.
+That installs `todoist`, plus `gog-reauth`, a helper that re-authorizes your Google account. From a clone, `pipx install .` (or `pip install .` inside a virtualenv) works too.
 
 `plan`, `start` and `log` talk to Google Calendar through `gog`, a Google Workspace CLI. The other commands only need Todoist.
 
