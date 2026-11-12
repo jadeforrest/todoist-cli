@@ -1,0 +1,48 @@
+#!/bin/sh
+# Re-authorize the Google account that `todoist start` / `todoist plan` use.
+#
+# Exists because gog's refresh token expires or gets revoked often enough that
+# the raw remedy (`gog auth add <email> --services ... --force-consent`) is not
+# worth remembering. The CLI's error messages point here by name.
+#
+# Usage: gog-reauth [account]   (defaults to $GOG_ACCOUNT)
+set -eu
+
+ACCOUNT="${1:-${GOG_ACCOUNT:-}}"
+if [ -z "$ACCOUNT" ]; then
+    echo "Usage: gog-reauth <account>   (or set GOG_ACCOUNT)" >&2
+    exit 2
+fi
+
+if ! command -v gog >/dev/null 2>&1; then
+    echo "gog is not on PATH. Install it with:  brew install gog" >&2
+    exit 1
+fi
+
+# Re-authorizing with a narrower service list silently drops scopes other tools
+# depend on (e.g. a script that sends mail needs gmail), so carry over whatever
+# the stored token already had. Field 3 of `gog auth list -p` is that list.
+SERVICES="${GOG_SERVICES:-$(gog auth list -p 2>/dev/null | awk -F'\t' -v a="$ACCOUNT" '$1 == a { print $3; exit }')}"
+if [ -z "$SERVICES" ]; then
+    # todoist-cli only needs Calendar; set GOG_SERVICES to request more.
+    SERVICES="calendar"
+    echo "No stored token for $ACCOUNT — requesting: $SERVICES"
+else
+    echo "Re-authorizing $ACCOUNT with its existing services: $SERVICES"
+fi
+
+echo "A browser window will open; approve the Google consent screen."
+# --force-consent makes Google issue a *new* refresh token rather than handing
+# back the one that just expired.
+gog auth add "$ACCOUNT" --services "$SERVICES" --force-consent
+
+echo
+echo "Verifying calendar access..."
+if gog calendar calendars -a "$ACCOUNT" --no-input >/dev/null 2>&1; then
+    echo "OK — $ACCOUNT is authorized. Re-run your todoist command."
+else
+    echo "Still can't reach the Calendar API for $ACCOUNT." >&2
+    echo "Try clearing the stored token first:" >&2
+    echo "    gog auth remove $ACCOUNT && gog-reauth $ACCOUNT" >&2
+    exit 1
+fi

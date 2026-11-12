@@ -1,0 +1,446 @@
+# Mutants for tools/mutate.py — see that file's docstring for the why.
+#
+# Each entry replaces `old` with `new` in `file`, once, on a throwaway copy of
+# the repo, then runs the suite. The suite is expected to FAIL (the mutant is
+# "killed"). A mutant that survives names a behavior nothing tests.
+#
+# `old` must match exactly once, so keep the anchor small but unique. When you
+# refactor the anchored line, the mutant reports SKIPPED — update it or drop it.
+#
+# Add mutants as you write new logic. Aim them at what's easy to get wrong and
+# invisible when wrong: boundary comparisons (< vs <=), dropped guard clauses,
+# a default that silently substitutes for a real value.
+
+# --- planner.park_overdue_dates: never leave a due date in the past ----------
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:"
+new = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date > today:"
+label = "park: >= today -> > today (a task due today would be parked)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:"
+new = "if item.recurrence is not None or item.due_date is None or item.due_date >= today:"
+label = "park: drop the pinned guard (would rewrite a timed or @fixed task's date)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:"
+new = "if item.pinned or item.recurrence is not None or item.due_date >= today:"
+label = "park: drop the None guard"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:"
+new = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date > today or True:"
+label = "park: skip everything (the whole function becomes a no-op)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "if current is None or current < today:"
+new = "if current is None:"
+label = "park: drop the clamp on an explicit past date from the editor"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "if current is None or current < today:"
+new = "if current is None or current <= today:"
+label = "park: < today -> <= today (would re-park work scheduled for today)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "if current is None or current < today:"
+new = "if True:"
+label = "park: always overwrite (clobbers the dates the packer chose)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "parked[item.id] = parking_day"
+new = "parked[item.id] = today"
+label = "park: park on today instead of the last day of the horizon"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "    parked = dict(final_dates)"
+new = "    parked = final_dates"
+label = "park: mutate the caller's dict in place"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "final_dates = planner.park_overdue_dates(final_dates, items, today, buckets[-1])"
+new = "final_dates = planner.park_overdue_dates(final_dates, items, today, buckets[0])"
+label = "cmd_plan: parking day buckets[-1] -> buckets[0]"
+
+# --- todoist_cli._validated_deadline: only canonical YYYY-MM-DD reaches the API
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = 'canonical = parsed.strftime("%Y-%m-%d") == raw'
+new = "canonical = True"
+label = "deadline: drop the canonical round-trip (unpadded '2026-8-17' would pass)"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = """    if not canonical:
+        print(
+            f"ERROR: --deadline must be an ISO date (YYYY-MM-DD), got {raw!r}. \""""
+new = """    if False:
+        print(
+            f"ERROR: --deadline must be an ISO date (YYYY-MM-DD), got {raw!r}. \""""
+label = "deadline: drop the rejection entirely (garbage would reach the API)"
+
+# --- deadline must not be conflated with, or clobber, the due date ----------
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "            deadline_date=deadline,\n            priority=api_priority,\n        )\n    except TodoistAPIError as exc:\n        print(f\"ERROR: {exc}\", file=sys.stderr)\n        sys.exit(1)\n\n    print(f\"Created task: {task['id']}\")"
+new = "            deadline_date=None,\n            priority=api_priority,\n        )\n    except TodoistAPIError as exc:\n        print(f\"ERROR: {exc}\", file=sys.stderr)\n        sys.exit(1)\n\n    print(f\"Created task: {task['id']}\")"
+label = "create: silently drop the deadline (task created with no commitment date)"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "            due_string=args.due,\n            deadline_date=deadline,\n            priority=api_priority,\n        )\n    except TodoistAPIError as exc:\n        print(f\"ERROR: {exc}\", file=sys.stderr)\n        sys.exit(1)\n\n    print(f\"Updated task: {task['id']}\")"
+new = "            due_string=deadline,\n            deadline_date=deadline,\n            priority=api_priority,\n        )\n    except TodoistAPIError as exc:\n        print(f\"ERROR: {exc}\", file=sys.stderr)\n        sys.exit(1)\n\n    print(f\"Updated task: {task['id']}\")"
+label = "update: deadline overwrites the due date (the exact bug this feature fixes)"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "        for v in (args.content, args.description, labels, args.due, deadline, api_priority)"
+new = "        for v in (args.content, args.description, labels, args.due, api_priority)"
+label = "update: deadline no longer counts as a field (--deadline alone would be rejected)"
+
+# --- todoist_client: the payload keys themselves ---------------------------
+
+[[mutant]]
+file = "todoist_cli/client.py"
+old = """        if deadline_date is not None:
+            payload["deadline_date"] = deadline_date
+        if priority is not None:
+            payload["priority"] = priority
+
+        try:
+            resp = self._session.post(f"{self.BASE_URL}/tasks", json=payload)"""
+new = """        if deadline_date is not None:
+            payload["due_date"] = deadline_date
+        if priority is not None:
+            payload["priority"] = priority
+
+        try:
+            resp = self._session.post(f"{self.BASE_URL}/tasks", json=payload)"""
+label = "create_task: send the deadline as due_date (wrong field, silently)"
+
+# --- gog error diagnosis + the offered reauth -------------------------------
+
+[[mutant]]
+file = "todoist_cli/tracker.py"
+old = """    if any(m in text for m in _SCOPE_ERROR_MARKERS):
+        return "scope""""
+new = """    if any(m in text for m in _SCOPE_ERROR_MARKERS) and False:
+        return "scope""""
+label = "kind: scope errors fall through to auth (a plain reauth re-mints the same scopes)"
+
+[[mutant]]
+file = "todoist_cli/tracker.py"
+old = """    if any(m in text for m in _AUTH_ERROR_MARKERS):
+        return "auth""""
+new = """    if any(m in text for m in _AUTH_ERROR_MARKERS):
+        return None"""
+label = "kind: expired token is no longer diagnosed (back to the bare error)"
+
+[[mutant]]
+file = "todoist_cli/tracker.py"
+old = """    if any(m in text for m in _NETWORK_ERROR_MARKERS):
+        return "network""""
+new = """    if any(m in text for m in _NETWORK_ERROR_MARKERS):
+        return "auth""""
+label = "kind: blame a network outage on auth (sends the user through a pointless consent flow)"
+
+[[mutant]]
+file = "todoist_cli/tracker.py"
+old = '    text = (message or "").lower()'
+new = '    text = (message or "")'
+label = "kind: case-sensitive matching (misses capitalized Google error text)"
+
+[[mutant]]
+file = "todoist_cli/tracker.py"
+old = 'REAUTHABLE_KINDS = ("auth", "scope")'
+new = 'REAUTHABLE_KINDS = ("auth", "scope", "network", "quota", None)'
+label = "reauth: offer a consent flow for failures it cannot fix"
+
+[[mutant]]
+file = "todoist_cli/tracker.py"
+old = "        result = subprocess.run([REAUTH_COMMAND, account])"
+new = "        result = subprocess.run([REAUTH_COMMAND, account], capture_output=True, timeout=30)"
+label = "reauth: capture the OAuth flow's output (hides the consent URL, times out mid-approval)"
+
+[[mutant]]
+file = "todoist_cli/tracker.py"
+old = "    return result.returncode == 0"
+new = "    return True"
+label = "reauth: treat a failed reauth as success"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "    if not (sys.stdin.isatty() and sys.stdout.isatty()):\n        return False"
+new = "    if False:\n        return False"
+label = "offer: prompt even without a TTY (a launchd run would hang on input)"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "    if not tracker.gog_auth_ok(account):\n        print(\"Re-authentication finished but calendar access still fails.\", file=sys.stderr)\n        return False"
+new = "    if False:\n        print(\"Re-authentication finished but calendar access still fails.\", file=sys.stderr)\n        return False"
+label = "offer: trust the wrapper's exit code without re-probing calendar access"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = """    if answer not in ("y", "yes"):
+        return False"""
+new = """    if answer in ("y", "yes"):
+        return False"""
+label = "offer: run the reauth when the user declines"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "            ok, message = tracker.create_calendar_event(\n                title, start, end, description=event_description, account=account, event_color=color_id\n            )\n            if not ok:"
+new = "            ok, message = tracker.create_calendar_event(\n                title, datetime.now().astimezone(), datetime.now().astimezone(), description=event_description, account=account, event_color=color_id\n            )\n            if not ok:"
+label = "start: the post-reauth retry logs 'now' instead of the tracked interval"
+
+# --- planner.pack: an overdue pinned item lands on the first bucket ----------
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "        if day is not None and buckets and day < buckets[0]:"
+new = "        if day is not None and buckets and day < buckets[0] and False:"
+label = "pack: drop the overdue-pinned clamp (a missed recurring task vanishes)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "        if day is not None and buckets and day < buckets[0]:"
+new = "        if day is not None and buckets and day > buckets[0]:"
+label = "pack: clamp the wrong direction (future pinned work dragged to today)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "            day = buckets[0]"
+new = "            day = buckets[-1]"
+label = "pack: park overdue pinned work on the last day instead of today"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "            day = buckets[0]"
+new = "            item.due_date = buckets[0]"
+label = "pack: rewrite the pinned item's due date instead of just placing it"
+
+# --- todoist_cli._format_task_row: a pinned row never shows a move arrow -----
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "    new_date = None if item.pinned else final_dates.get(item.id)"
+new = "    new_date = final_dates.get(item.id)"
+label = "row: show an old -> new arrow for a pinned task the plan never rewrites"
+
+# --- planner.pack / unplanned_reason: pinned work off the planned days ------
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = """        else:
+            # Its day is a weekend, or past the horizon."""
+new = """        elif False:
+            # Its day is a weekend, or past the horizon."""
+label = "pack: drop pinned work whose day isn't planned (the original silence)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "            unplanned.append(item)"
+new = "            unscheduled.append(item)"
+label = "pack: report unplanned pinned work as merely 'didn't fit'"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "        result.unscheduled = movable"
+new = "        result.unscheduled = movable\n        result.unplanned = []"
+label = "pack: empty horizon loses its pinned items"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "    if item.due_date > buckets[-1]:"
+new = "    if item.due_date >= buckets[-1]:"
+label = "reason: the last bucket itself misreported as past the horizon"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "    if item.due_date > buckets[-1]:"
+new = "    if item.due_date > buckets[0]:"
+label = "reason: compare against the first bucket instead of the last"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = '''    return "not a working day"'''
+new = '''    return "past the horizon"'''
+label = "reason: call every unplanned day 'past the horizon'"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "    if result.unplanned:"
+new = "    if False:"
+label = "print: hide the unplanned section entirely"
+
+# --- cmd_log / _track_and_log: untracked time sessions -----------------------
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "    if not title:\n        print(\"ERROR: give the session a title.\""
+new = "    if False:\n        print(\"ERROR: give the session a title.\""
+label = "log: drop the blank-title guard (would write an untitled event)"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "_track_and_log(title, account=account, event_description=args.description)"
+new = "_track_and_log(title, account=account)"
+label = "log: --description silently dropped"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "f\"  | {title}\","
+new = "f\"\","
+label = "track: manual-log fallback loses the title"
+
+# --- planner.build_items / title_size_minutes: explicit estimates -----------
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "return explicit_size(t) or 0"
+new = "return 0"
+label = "container: ignore an explicit estimate on a parent task"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "return explicit_size(t) or 0"
+new = "return parse_size(t, default_minutes)"
+label = "container: unestimated parent gets the default instead of 0"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = '(r"(\d+(?:\.\d+)?)([hm])(?![A-Za-z])"'
+new = '(r"(\d+)([hm])(?![A-Za-z])"'
+label = "size hint: drop decimal support"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "return round(sum("
+new = "return int(sum("
+label = "size hint: truncate instead of round"
+
+# --- recurring tasks: soft pinning, the half-point bonus, write-back safety ---
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "self.priority - (0.5 if self.soft_recurring else 0),"
+new = "self.priority,"
+label = "sort: drop the recurring half-point bonus"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "self.priority - (0.5 if self.soft_recurring else 0),"
+new = "self.priority - (1.5 if self.soft_recurring else 0),"
+label = "sort: a full-point-plus bonus lets a recurring P2 beat a P1"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "    if _INTERVAL_RULE_RE.search(text):\n        return False"
+new = "    if False:\n        return False"
+label = "writable: interval rules no longer plan-only (every other mon would drift)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = 'if text.startswith("every!") or _DAILY_RULE_RE.match(text):'
+new = 'if text.startswith("every") or _DAILY_RULE_RE.match(text):'
+label = "writable: every rule treated like every!"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = 'return buckets[_anchor_index(buckets, item.due_date, prefer="later") :]'
+new = 'return buckets'
+label = "order: a recurring task may move earlier than its own day"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "return not buckets or due is None or (due >= buckets[0] and due not in buckets)"
+new = "return not buckets or due is None or due not in buckets"
+label = "off_plan: an overdue recurring task drops off the plan"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "    if not item.soft_recurring:\n        return False\n    due = item.due_date"
+new = "    if True:\n        return False\n    due = item.due_date"
+label = "off_plan: next week's / weekend occurrences get pulled onto planned days"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "unplanned = _place_pinned(pinned, buckets, remaining, schedule) + off_plan"
+new = "unplanned = _place_pinned(pinned, buckets, remaining, schedule)"
+label = "pack: off-plan recurring tasks vanish"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = 'pinned = bool(due.get("datetime")) or fixed'
+new = 'pinned = bool(due.get("datetime"))'
+label = "pinning: @fixed ignored"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "fixed = any(label.lower() == FIXED_LABEL"
+new = "fixed = any(label == FIXED_LABEL"
+label = "pinning: @Fixed no longer matches"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:"
+new = "if item.pinned or item.due_date is None or item.due_date >= today:"
+label = "park: overdue recurring tasks parked a week out"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "            if item.recurrence is None:\n                client.update_task"
+new = "            if True:\n                client.update_task"
+label = "apply: recurring task written with due_date (drops the rule)"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "if not item.date_writable or new_date is None or new_date == item.due_date:"
+new = "if item.pinned or new_date is None or new_date == item.due_date:"
+label = "apply: plan-only recurring task written back (cadence drifts)"
+
+[[mutant]]
+file = "todoist_cli/client.py"
+old = '        if status != "ok":'
+new = "        if False:"
+label = "client: a rejected sync command reported as success"
+
+# --- account resolution -------------------------------------------------------
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "        account = config_account or tracker.configured_account()"
+new = "        account = tracker.configured_account() or config_account"
+label = "account: GOG_ACCOUNT overrides the account in the plan.toml `plan` loaded"
+
+[[mutant]]
+file = "todoist_cli/cli.py"
+old = "    account = _resolve_account(config.account)"
+new = "    account = _resolve_account()"
+label = "account: plan --config's account ignored"
+
+[[mutant]]
+file = "todoist_cli/tracker.py"
+old = "    except FileNotFoundError:\n        return \"\""
+new = "    except OSError:\n        return \"\""
+label = "account: an unreadable plan.toml reported as no account"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "        timezone=ZoneInfo(data[\"timezone\"]) if data[\"timezone\"] else local_timezone(),"
+new = "        timezone=ZoneInfo(data[\"timezone\"]) if data[\"timezone\"] else ZoneInfo(\"UTC\"),"
+label = "config: missing timezone falls back to UTC instead of the local zone"

@@ -1,0 +1,22 @@
+# Config for `todoist plan`, `todoist start` and `todoist log`.
+# Copy to ~/.config/todoist-cli/plan.toml and adjust.
+# Any key you omit falls back to the built-in default shown here.
+
+account = "you@example.com"  # Google account gog reads busy times from and logs time to.
+                             # $GOG_ACCOUNT overrides it for `start`/`log`.
+calendars = ["primary"]      # calendars whose busy time is subtracted from your working hours
+
+default_task_minutes = 30    # size of a task with no estimate (see README: "Estimates")
+horizon_days = 7             # weekdays in [today, today + horizon_days] get planned
+eligibility_days = 14        # a task whose dates are all further out than this is left alone
+# timezone = "America/New_York"   # default: this machine's time zone
+
+# All-day events are usually marked "free", so `gog calendar freebusy` ignores
+# them. List vacation days here or they plan as full working days.
+days_off = []                # ISO dates, e.g. ["2026-12-24", "2026-12-25"]
+
+[working_hours]
+default = { start = "09:00", end = "17:00" }
+# Per-weekday overrides (weekends are never planned):
+# monday = { start = "09:00", end = "17:00" }
+# friday = { start = "09:00", end = "12:00" }
