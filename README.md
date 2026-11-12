@@ -10,9 +10,27 @@ It also has the everyday commands: `create`, `list`, `update`, `search`, `filter
 
 `plan` is only as good as the information in your tasks. Read [Todoist conventions](#todoist-conventions) before your first run: estimates, due dates versus deadlines, `@fixed`, and recurring rules all change what it does.
 
-## Install
+## Requirements
 
-You need Python 3.11 or newer.
+| What | Needed for | Notes |
+|---|---|---|
+| Python 3.11+ | everything | Tested on 3.11, 3.12 and 3.14. |
+| macOS or Linux | `start`, `log` | The timer and the arrow-key picker use POSIX terminal APIs. Windows isn't supported. |
+| A Todoist account and API token | all commands except `log` | Uses Todoist API v1. |
+| [`gog`](#install), signed in to a Google account with Calendar access | `plan`, `start`, `log` | Reads free/busy and creates events. Developed against gog 0.12. |
+| `$VISUAL` or `$EDITOR` | `plan`'s `e` option | Falls back to `vi`. |
+
+Python packages, installed automatically:
+
+| Package | Why |
+|---|---|
+| [`requests`](https://pypi.org/project/requests/) ≥ 2.31 | Todoist API calls |
+| [`urllib3`](https://pypi.org/project/urllib3/) ≥ 1.26 | Retries on transient API errors (already a `requests` dependency, declared because it's imported directly) |
+| [`python-dotenv`](https://pypi.org/project/python-dotenv/) ≥ 1.0 | Reading `~/.config/todoist-cli/.env` |
+
+Development only (`pip install -e '.[dev]'`): `pytest` and `hypothesis`.
+
+## Install
 
 ```bash
 pipx install git+https://github.com/jadeforrest/todoist-cli.git
