@@ -130,6 +130,14 @@ def title_size_minutes(content: str) -> int | None:
     leading "Q" and isn't preceded by an accepted token, so it's dropped.
     Decimals are read whole ("1.5h" is 90m), rounded to the nearest minute.
     """
+    run = _last_size_run(content)
+    if run is None:
+        return None
+    return round(sum(num * 60 if unit == "h" else num for _, _, num, unit in run))
+
+
+def _last_size_run(content: str) -> list[tuple[int, int, float, str]] | None:
+    """The last contiguous run of accepted size tokens, as (start, end, number, unit)."""
     tokens: list[tuple[int, int, float, str]] = []
     for m in _RAW_SIZE_TOKEN_RE.finditer(content):
         start, end = m.start(), m.end()
@@ -148,8 +156,18 @@ def title_size_minutes(content: str) -> int | None:
             runs[-1].append(tok)
         else:
             runs.append([tok])
+    return runs[-1]
 
-    return round(sum(num * 60 if unit == "h" else num for _, _, num, unit in runs[-1]))
+
+def with_size_hint(content: str, minutes: int) -> str:
+    """`content` with its size hint set to `minutes`: the last run of size tokens
+    is replaced, or " [1h30m]" is appended when the title has none. The result
+    always reads back as `minutes` through title_size_minutes."""
+    hint = format_minutes(minutes)
+    run = _last_size_run(content)
+    if run is None:
+        return f"{content.rstrip()} [{hint}]".lstrip()
+    return content[: run[0][0]] + hint + content[run[-1][1] :]
 
 
 def explicit_size(task: dict) -> int | None:

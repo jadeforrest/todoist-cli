@@ -1699,3 +1699,30 @@ class TestSoftRecurringProperties:
         outcomes = [placed_fully, rec in result.at_risk, rec in result.unplanned]
         assert outcomes.count(True) == 1, (due, caps, outcomes)
         assert rec not in result.unscheduled
+
+
+class TestWithSizeHint:
+    @given(content=st.text(), minutes=st.integers(min_value=0, max_value=100_000))
+    @settings(max_examples=500)
+    def test_round_trips_through_title_size_minutes(self, content, minutes):
+        assert planner.title_size_minutes(planner.with_size_hint(content, minutes)) == minutes
+
+    @given(
+        content=st.text(alphabet=st.characters(categories=["L", "Zs", "P"]), min_size=1),
+        minutes=st.integers(min_value=1, max_value=10_000),
+    )
+    def test_title_without_hint_keeps_its_text(self, content, minutes):
+        if planner.title_size_minutes(content) is None:
+            assert planner.with_size_hint(content, minutes).startswith(content.strip())
+
+    def test_replaces_existing_hint_in_place(self):
+        assert planner.with_size_hint("Write report [2h] today", 90) == "Write report [1h30m] today"
+
+    def test_replaces_glued_run_whole(self):
+        assert planner.with_size_hint("Call 1h30m", 15) == "Call 15m"
+
+    def test_appends_when_absent(self):
+        assert planner.with_size_hint("Write report ", 60) == "Write report [1h]"
+
+    def test_appends_to_empty_title(self):
+        assert planner.with_size_hint("", 30) == "[30m]"

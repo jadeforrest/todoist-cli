@@ -1339,3 +1339,58 @@ class TestAddComment:
 
         sent = mock_session.post.call_args.kwargs["json"]
         assert sent == {"task_id": task_id, "content": content}
+
+
+class TestTodoneClientAdditions:
+    """update_task duration/clear_deadline, update_comment, get_task, get_labels."""
+
+    def _client(self, body=None, status=200):
+        session = MagicMock()
+        session.post.return_value = make_mock_response(body or {"id": "x"}, status_code=status)
+        session.get.return_value = make_mock_response(body or {"id": "x"}, status_code=status)
+        return TodoistClient("test-token", session=session), session
+
+    def test_duration_sends_minutes_and_unit(self):
+        client, session = self._client()
+        client.update_task("t1", duration_minutes=45)
+        assert session.post.call_args.kwargs["json"] == {"duration": 45, "duration_unit": "minute"}
+
+    def test_clear_deadline_sends_null(self):
+        client, session = self._client()
+        client.update_task("t1", clear_deadline=True)
+        assert session.post.call_args.kwargs["json"] == {"deadline_date": None}
+
+    def test_clear_deadline_with_a_deadline_is_a_caller_error(self):
+        client, session = self._client()
+        with pytest.raises(ValueError):
+            client.update_task("t1", deadline_date="2026-01-01", clear_deadline=True)
+        session.post.assert_not_called()
+
+    def test_update_comment_posts_content(self):
+        client, session = self._client({"id": "c1", "content": "new"})
+        result = client.update_comment("c1", "new")
+        session.post.assert_called_once_with(
+            "https://api.todoist.com/api/v1/comments/c1", json={"content": "new"}
+        )
+        assert result["content"] == "new"
+
+    def test_update_comment_raises_on_http_error(self):
+        client, _ = self._client({}, status=404)
+        with pytest.raises(TodoistAPIError) as exc_info:
+            client.update_comment("c1", "new")
+        assert "404 on POST /comments/c1" in str(exc_info.value)
+
+    def test_get_task_reads_one_task(self):
+        client, session = self._client({"id": "t9", "content": "x"})
+        assert client.get_task("t9")["id"] == "t9"
+        assert session.get.call_args.args[0] == "https://api.todoist.com/api/v1/tasks/t9"
+
+    def test_get_labels_follows_pagination(self):
+        session = MagicMock()
+        session.get.side_effect = [
+            make_mock_response({"results": [{"name": "a"}], "next_cursor": "n"}),
+            make_mock_response({"results": [{"name": "b"}], "next_cursor": None}),
+        ]
+        client = TodoistClient("test-token", session=session)
+        assert [l["name"] for l in client.get_labels()] == ["a", "b"]
+        assert session.get.call_args_list[1].kwargs["params"] == {"cursor": "n"}

@@ -103,15 +103,36 @@ class TodoistClient:
             )
         return resp.json()
 
+    def _get_all(self, path: str, params: dict) -> list[dict]:
+        """GET every page of a list endpoint, following next_cursor and keeping `params`."""
+        items: list[dict] = []
+        page_params = dict(params)
+        while True:
+            data = self._get(path, params=page_params)
+            items.extend(data["results"] if isinstance(data, dict) else data)
+            next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
+            if not next_cursor:
+                return items
+            page_params = {**params, "cursor": next_cursor}
+
     def _post(self, path: str) -> None:
+        self._send_post(path)
+
+    def _post_json(self, path: str, payload: dict) -> dict:
+        """POST a JSON body and return the parsed JSON response."""
+        return self._send_post(path, payload).json()
+
+    def _send_post(self, path: str, payload: Optional[dict] = None):
+        kwargs = {} if payload is None else {"json": payload}
         try:
-            resp = self._session.post(f"{self.BASE_URL}{path}")
+            resp = self._session.post(f"{self.BASE_URL}{path}", **kwargs)
         except requests.exceptions.RequestException as exc:
             raise TodoistAPIError(f"Network error on POST {path}: {exc}") from exc
         if not resp.ok:
             raise TodoistAPIError(
                 f"Todoist API error {resp.status_code} on POST {path}: {resp.text}"
             )
+        return resp
 
     def get_open_tasks_by_label(self, label: str) -> list[dict]:
         """Return all open (incomplete) tasks that have the given label.
@@ -121,16 +142,7 @@ class TodoistClient:
         is_completed to be safe. Follows pagination via next_cursor.
         """
         params: dict = {"label": label}
-        tasks: list[dict] = []
-        while True:
-            data = self._get("/tasks", params=params)
-            page = data["results"] if isinstance(data, dict) else data
-            tasks.extend(t for t in page if not t.get("is_completed", False))
-            next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
-            if not next_cursor:
-                break
-            params = {"label": label, "cursor": next_cursor}
-        return tasks
+        return [t for t in self._get_all("/tasks", params) if not t.get("is_completed", False)]
 
     def get_open_tasks_by_filter(self, query: str) -> list[dict]:
         """Return all open (incomplete) tasks matching a Todoist filter query.
@@ -142,16 +154,7 @@ class TodoistClient:
         filter as the other fetch methods.
         """
         params: dict = {"query": query}
-        tasks: list[dict] = []
-        while True:
-            data = self._get("/tasks/filter", params=params)
-            page = data["results"] if isinstance(data, dict) else data
-            tasks.extend(t for t in page if not t.get("is_completed", False))
-            next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
-            if not next_cursor:
-                break
-            params = {"query": query, "cursor": next_cursor}
-        return tasks
+        return [t for t in self._get_all("/tasks/filter", params) if not t.get("is_completed", False)]
 
     def get_all_open_tasks(self) -> list[dict]:
         """Return all open (incomplete) tasks across every project.
@@ -161,16 +164,7 @@ class TodoistClient:
         next_cursor.
         """
         params: dict = {}
-        tasks: list[dict] = []
-        while True:
-            data = self._get("/tasks", params=params)
-            page = data["results"] if isinstance(data, dict) else data
-            tasks.extend(t for t in page if not t.get("is_completed", False))
-            next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
-            if not next_cursor:
-                break
-            params = {"cursor": next_cursor}
-        return tasks
+        return [t for t in self._get_all("/tasks", params) if not t.get("is_completed", False)]
 
     def get_projects(self) -> list[dict]:
         """Return all projects. Each has ``id``, ``name``, and ``inbox_project`` (bool).
@@ -178,16 +172,7 @@ class TodoistClient:
         Follows pagination via next_cursor, mirroring the task fetch methods.
         """
         params: dict = {}
-        projects: list[dict] = []
-        while True:
-            data = self._get("/projects", params=params)
-            page = data["results"] if isinstance(data, dict) else data
-            projects.extend(page)
-            next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
-            if not next_cursor:
-                break
-            params = {"cursor": next_cursor}
-        return projects
+        return self._get_all("/projects", params)
 
     def get_sections(self, project_id: Optional[str] = None) -> list[dict]:
         """Return sections (board columns), optionally scoped to one project.
@@ -198,17 +183,7 @@ class TodoistClient:
         params: dict = {}
         if project_id is not None:
             params["project_id"] = project_id
-        sections: list[dict] = []
-        while True:
-            data = self._get("/sections", params=params)
-            page = data["results"] if isinstance(data, dict) else data
-            sections.extend(page)
-            next_cursor = data.get("next_cursor") if isinstance(data, dict) else None
-            if not next_cursor:
-                break
-            params = dict(params)
-            params["cursor"] = next_cursor
-        return sections
+        return self._get_all("/sections", params)
 
     def move_task(
         self,
@@ -272,16 +247,20 @@ class TodoistClient:
 
     def add_comment(self, task_id: str, content: str) -> dict:
         """Add a markdown comment to a task and return the created comment."""
-        payload = {"task_id": task_id, "content": content}
-        try:
-            resp = self._session.post(f"{self.BASE_URL}/comments", json=payload)
-        except requests.exceptions.RequestException as exc:
-            raise TodoistAPIError(f"Network error on POST /comments: {exc}") from exc
-        if not resp.ok:
-            raise TodoistAPIError(
-                f"Todoist API error {resp.status_code} on POST /comments: {resp.text}"
-            )
-        return resp.json()
+        return self._post_json("/comments", {"task_id": task_id, "content": content})
+
+    def update_comment(self, comment_id: str, content: str) -> dict:
+        """Replace a comment's text and return the updated comment."""
+        return self._post_json(f"/comments/{comment_id}", {"content": content})
+
+    def get_task(self, task_id: str) -> dict:
+        """Return one task by id."""
+        return self._get(f"/tasks/{task_id}")
+
+    def get_labels(self) -> list[dict]:
+        """Return the user's personal labels (each has ``id`` and ``name``)."""
+        params: dict = {}
+        return self._get_all("/labels", params)
 
     def fetch_attachment_text(self, url: str) -> str:
         """Fetch and return the text content of an attachment URL.
@@ -349,15 +328,7 @@ class TodoistClient:
         if priority is not None:
             payload["priority"] = priority
 
-        try:
-            resp = self._session.post(f"{self.BASE_URL}/tasks", json=payload)
-        except requests.exceptions.RequestException as exc:
-            raise TodoistAPIError(f"Network error on POST /tasks: {exc}") from exc
-        if not resp.ok:
-            raise TodoistAPIError(
-                f"Todoist API error {resp.status_code} on POST /tasks: {resp.text}"
-            )
-        return resp.json()
+        return self._post_json("/tasks", payload)
 
     def update_task(
         self,
@@ -370,6 +341,8 @@ class TodoistClient:
         due_date: Optional[str] = None,
         deadline_date: Optional[str] = None,
         priority: Optional[int] = None,
+        duration_minutes: Optional[int] = None,
+        clear_deadline: bool = False,
     ) -> dict:
         """Update fields on an existing task and return the updated task object.
 
@@ -392,37 +365,32 @@ class TodoistClient:
                 deadline is when it is owed. The API takes no natural-language
                 form here.
             priority: 1 (normal) to 4 (urgent).
+            duration_minutes: Native task duration, in minutes.
+            clear_deadline: Remove the deadline (sends ``deadline_date: null``).
+                Can't be combined with ``deadline_date``.
         """
         if due_string is not None and due_date is not None:
             raise ValueError("update_task: pass at most one of due_string, due_date")
 
-        payload: dict = {}
-        if content is not None:
-            payload["content"] = content
-        if description is not None:
-            payload["description"] = description
-        if labels is not None:
-            payload["labels"] = labels
-        if due_string is not None:
-            payload["due_string"] = due_string
-        if due_date is not None:
-            payload["due_date"] = due_date
-        if deadline_date is not None:
-            payload["deadline_date"] = deadline_date
-        if priority is not None:
-            payload["priority"] = priority
+        fields = {
+            "content": content,
+            "description": description,
+            "labels": labels,
+            "due_string": due_string,
+            "due_date": due_date,
+            "deadline_date": deadline_date,
+            "priority": priority,
+        }
+        payload: dict = {k: v for k, v in fields.items() if v is not None}
+        if duration_minutes is not None:
+            payload["duration"] = duration_minutes
+            payload["duration_unit"] = "minute"
+        if clear_deadline:
+            if deadline_date is not None:
+                raise ValueError("update_task: pass at most one of deadline_date, clear_deadline")
+            payload["deadline_date"] = None
 
-        try:
-            resp = self._session.post(f"{self.BASE_URL}/tasks/{task_id}", json=payload)
-        except requests.exceptions.RequestException as exc:
-            raise TodoistAPIError(
-                f"Network error on POST /tasks/{task_id}: {exc}"
-            ) from exc
-        if not resp.ok:
-            raise TodoistAPIError(
-                f"Todoist API error {resp.status_code} on POST /tasks/{task_id}: {resp.text}"
-            )
-        return resp.json()
+        return self._post_json(f"/tasks/{task_id}", payload)
 
     def reschedule_recurring(self, task_id: str, due_date: str, rule: str) -> None:
         """Move one occurrence of a recurring task to `due_date`, keeping its rule.
