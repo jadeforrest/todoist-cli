@@ -32,7 +32,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_SPEC = REPO / "tools" / "mutants.toml"
 IGNORE = shutil.ignore_patterns(
-    ".venv", ".git", "__pycache__", ".pytest_cache", ".hypothesis", "*.egg-info"
+    ".venv", ".git", "__pycache__", ".pytest_cache", ".hypothesis", "*.egg-info",
+    # The Swift build output and app bundle: large, and no Python test reads them.
+    ".build", "Todone.app",
 )
 
 

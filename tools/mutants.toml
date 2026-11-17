@@ -488,3 +488,116 @@ file = "todoist_cli/client.py"
 old = "            payload[\"deadline_date\"] = None\n"
 new = "            pass\n"
 label = "ported update_task: clear_deadline sends nothing"
+
+# --- Todone (todone_core) ----------------------------------------------------
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "    return shown if shown.weekday() < 5 else \"tray\""
+new = "    return shown"
+label = "todone place: weekend dates get a column instead of the tray"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "        if target < today:"
+new = "        if target <= today:"
+label = "todone move: refuses a drop onto today"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "        if timer.stopped_at is None:"
+new = "        if True:"
+label = "todone stop: a retried calendar write logs a later end time"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "    if (task.get(\"duration\") or {}).get(\"amount\"):"
+new = "    if False:"
+label = "todone size: writes a title hint even when the task has a native duration"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "        final = {k: v for k, v in draft.final_dates.items() if k in by_id}"
+new = "        final = dict(draft.final_dates)"
+label = "todone confirm: logs tasks closed since the proposal"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "        if current == target:\n            return self.snapshot()"
+new = "        if False:\n            return self.snapshot()"
+label = "todone move: a same-day drop rewrites the date"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "                capacity[day] = minutes"
+new = "                pass"
+label = "todone capacity: overrides ignored"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "        take = min(need, capacity.get(day, 0))"
+new = "        take = need"
+label = "todone spread: a multi-day task lands whole on its first day"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "    out[last] = out.get(last, 0) + need"
+new = "    out[last] = out.get(last, 0)"
+label = "todone spread: minutes past the horizon are dropped"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "        if item.pinned:\n            # Pinned work"
+new = "        if False:\n            # Pinned work"
+label = "todone planned: pinned tasks get spread across days"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "        if on_proposed_day and item.id in draft.chunks:"
+new = "        if False:"
+label = "todone planned: planning ignores the plan's own split"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "        tasks = [t for t in self.tasks if t.get(\"project_id\") == inbox_id and not t.get(\"section_id\")]"
+new = "        tasks = [t for t in self.tasks if t.get(\"project_id\") == inbox_id]"
+label = "todone inbox: sectioned Inbox tasks shown in the Inbox panel"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = "            \"tray\": [views[i] for i in placement[\"tray\"] if i not in inbox_ids],"
+new = "            \"tray\": [views[i] for i in placement[\"tray\"]],"
+label = "todone inbox: Inbox tasks repeated in the tray"
+
+# --- todone_core subtasks and card edits ------------------------------------
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = 'children.sort(key=lambda t: (t.get("child_order", 0), t["id"]))'
+new = 'children.sort(key=lambda t: t["id"])'
+label = "subtasks: ignore Todoist's child order"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = '"subtasks": [] if t["id"] in seen else subtask_views(t["id"], kids, seen),'
+new = '"subtasks": [],'
+label = "subtasks: stop at the first level (nested ones never unfold)"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = '"due_date": ((t.get("due") or {}).get("date") or "")[:10] or None,'
+new = '"due_date": (t.get("due") or {}).get("date"),'
+label = "subtasks: due date keeps its time of day"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = 'return int(task.get("note_count") or task.get("comment_count") or 0)'
+new = 'return int(task.get("comment_count") or 0)'
+label = "comment count: ignore API v1's note_count"
+
+[[mutant]]
+file = "todoist_cli/todone_core.py"
+old = '''        self._write_changes(task_id, changes)
+        return self.refresh()'''
+new = '''        return self.refresh()'''
+label = "quick_update: forget to write the change"

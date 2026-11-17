@@ -229,6 +229,18 @@ Writing back an interval rule would shift every later occurrence. [docs/recurrin
 
 `--json` prints the raw task objects, for scripting.
 
+## Todone (Mac app)
+
+`todone/` is a SwiftUI app for the same data: today's tasks, timers that log to the calendar, and the weekly planner as draggable columns. It runs this package's Python as a helper process, so the app and `todoist plan` always compute the same thing. It needs macOS 14 and the Swift toolchain, and the `.venv` from [Development](#development).
+
+```bash
+todone/build-app.sh                         # builds todone/Todone.app
+open -n todone/Todone.app --args --fake     # sample data; nothing is written
+open todone/Todone.app                      # your tasks, using the CLI's config
+```
+
+See [todone/SPEC.md](todone/SPEC.md) for what it does and how it's built.
+
 ## Google re-authorization
 
 When `gog`'s token expires, `start`, `log` and `plan` offer to run `gog-reauth <account>`:
