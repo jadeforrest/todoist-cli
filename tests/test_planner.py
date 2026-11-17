@@ -1075,21 +1075,36 @@ class TestPackPassOrdering:
 
 
 class TestParkOverdueDates:
-    TODAY = date(2026, 7, 28)
-    LAST = date(2026, 8, 4)
+    TODAY = date(2026, 7, 28)  # a Tuesday
+    LAST = date(2026, 8, 4)  # a Tuesday
+    BEYOND = date(2026, 8, 5)  # the weekday after LAST
     PAST = date(2026, 7, 20)
+    DEADLINE = date(2026, 8, 10)
 
     def park(self, final_dates, items):
         return planner.park_overdue_dates(final_dates, items, self.TODAY, self.LAST)
 
-    def test_overdue_item_with_no_slot_is_parked(self):
-        # The whole point: it fit nowhere, so it kept a date in the past.
-        overdue = item("a", due_date=self.PAST)
+    def test_overdue_item_with_no_slot_and_no_deadline_goes_past_the_horizon(self):
+        # It fit nowhere and nothing says it must happen this week.
+        assert self.park({}, [item("a", due_date=self.PAST)]) == {"a": self.BEYOND}
+
+    def test_overdue_item_with_no_slot_and_a_deadline_goes_to_the_last_day(self):
+        overdue = item("a", due_date=self.PAST, deadline=self.DEADLINE)
         assert self.park({}, [overdue]) == {"a": self.LAST}
 
-    def test_item_due_today_with_no_slot_is_left_alone(self):
-        # Today is not the past — there is nothing to correct, so no write.
-        assert self.park({}, [item("a", due_date=self.TODAY)]) == {}
+    def test_item_due_today_with_no_slot_is_parked_too(self):
+        # Left on today, it would show today holding work it has no time for.
+        assert self.park({}, [item("a", due_date=self.TODAY)]) == {"a": self.BEYOND}
+
+    def test_item_due_today_with_a_deadline_and_no_slot_goes_to_the_last_day(self):
+        today = item("a", due_date=self.TODAY, deadline=self.DEADLINE)
+        assert self.park({}, [today]) == {"a": self.LAST}
+
+    def test_item_due_tomorrow_with_no_slot_is_left_alone(self):
+        assert self.park({}, [item("a", due_date=date(2026, 7, 29))]) == {}
+
+    def test_item_due_today_the_editor_kept_on_today_is_left_alone(self):
+        assert self.park({"a": self.TODAY}, [item("a", due_date=self.TODAY)]) == {"a": self.TODAY}
 
     def test_overdue_item_the_packer_placed_keeps_its_bucket_date(self):
         placed = {"a": date(2026, 7, 29)}
@@ -1106,6 +1121,9 @@ class TestParkOverdueDates:
         # Recurring/timed: the only writable field would drop the recurrence.
         assert self.park({}, [item("a", due_date=self.PAST, pinned=True)]) == {}
 
+    def test_pinned_item_due_today_is_left_alone(self):
+        assert self.park({}, [item("a", due_date=self.TODAY, pinned=True)]) == {}
+
     def test_undated_item_with_no_slot_is_left_alone(self):
         assert self.park({}, [item("a")]) == {}
 
@@ -1114,7 +1132,7 @@ class TestParkOverdueDates:
         assert self.park({}, [item("a", deadline=self.PAST)]) == {}
 
     def test_explicit_past_date_from_the_editor_is_clamped(self):
-        assert self.park({"a": self.PAST}, [item("a", due_date=self.PAST)]) == {"a": self.LAST}
+        assert self.park({"a": self.PAST}, [item("a", due_date=self.PAST)]) == {"a": self.BEYOND}
 
     def test_input_dict_is_not_mutated(self):
         original = {"a": self.PAST}
@@ -1124,7 +1142,26 @@ class TestParkOverdueDates:
     def test_other_items_dates_are_preserved(self):
         placed = {"b": date(2026, 7, 29)}
         parked = self.park(placed, [item("a", due_date=self.PAST), item("b", due_date=self.PAST)])
-        assert parked == {"a": self.LAST, "b": date(2026, 7, 29)}
+        assert parked == {"a": self.BEYOND, "b": date(2026, 7, 29)}
+
+    def test_horizon_ending_friday_parks_past_the_weekend(self):
+        friday = date(2026, 7, 31)
+        parked = planner.park_overdue_dates({}, [item("a", due_date=self.PAST)], self.TODAY, friday)
+        assert parked == {"a": date(2026, 8, 3)}
+
+
+class TestNextWeekday:
+    @pytest.mark.parametrize(
+        "day, expected",
+        [
+            (date(2026, 7, 27), date(2026, 7, 28)),  # Mon -> Tue
+            (date(2026, 7, 31), date(2026, 8, 3)),  # Fri -> Mon
+            (date(2026, 8, 1), date(2026, 8, 3)),  # Sat -> Mon
+            (date(2026, 8, 2), date(2026, 8, 3)),  # Sun -> Mon
+        ],
+    )
+    def test_examples(self, day, expected):
+        assert planner.next_weekday(day) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -1518,6 +1555,48 @@ class TestPinnedPartitionProperties:
         pinned = item("p", minutes=30, due_date=due, pinned=True)
         planner.pack([pinned], {d: 60 for d in _BUCKETS})
         assert pinned.due_date == due
+
+
+_PARK_ITEMS = st.lists(
+    st.builds(
+        lambda n, minutes, due, deadline, pinned, recurring: item(
+            f"i{n}", minutes=minutes, due_date=due, deadline=deadline, pinned=pinned,
+            recurrence="every day" if recurring else None,
+        ),
+        st.integers(0, 10_000),
+        st.integers(0, 240),
+        st.none() | st.dates(min_value=date(2026, 7, 1), max_value=date(2026, 8, 20)),
+        st.none() | st.dates(min_value=date(2026, 7, 1), max_value=date(2026, 9, 1)),
+        st.booleans(),
+        st.booleans(),
+    ),
+    max_size=12,
+    unique_by=lambda i: i.id,
+)
+
+
+class TestParkingProperties:
+    """Over any plan pack() produces: nothing writable is left on today or the
+    past without a slot, what pack() placed is never moved, and parked work
+    lands on the day its deadline (or lack of one) calls for."""
+
+    @given(_PARK_ITEMS, st.lists(st.integers(0, 240), min_size=len(_BUCKETS), max_size=len(_BUCKETS)))
+    @settings(max_examples=500)
+    def test_parking_invariants(self, items, minutes):
+        today, last = _BUCKETS[0], _BUCKETS[-1]
+        result = planner.pack(items, dict(zip(_BUCKETS, minutes)))
+        earliest = planner.earliest_scheduled_dates(result, _BUCKETS)
+        parked = planner.park_overdue_dates(earliest, items, today, last)
+        for i in items:
+            writable = not i.pinned and i.recurrence is None and i.due_date is not None
+            if i.id in earliest:
+                assert parked[i.id] == earliest[i.id]
+            elif writable and i.due_date <= today:
+                expected = last if i.deadline is not None else planner.next_weekday(last)
+                assert parked[i.id] == expected
+                assert parked[i.id].weekday() < 5
+            else:
+                assert i.id not in parked
 
 
 # ---------------------------------------------------------------------------

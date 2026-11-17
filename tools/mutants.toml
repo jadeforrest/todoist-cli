@@ -15,26 +15,26 @@
 
 [[mutant]]
 file = "todoist_cli/planner.py"
-old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:"
-new = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date > today:"
-label = "park: >= today -> > today (a task due today would be parked)"
+old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date > today:"
+new = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:"
+label = "park: > today -> >= today (a task due today with no slot would stay on today)"
 
 [[mutant]]
 file = "todoist_cli/planner.py"
-old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:"
-new = "if item.recurrence is not None or item.due_date is None or item.due_date >= today:"
+old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date > today:"
+new = "if item.recurrence is not None or item.due_date is None or item.due_date > today:"
 label = "park: drop the pinned guard (would rewrite a timed or @fixed task's date)"
 
 [[mutant]]
 file = "todoist_cli/planner.py"
-old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:"
-new = "if item.pinned or item.recurrence is not None or item.due_date >= today:"
+old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date > today:"
+new = "if item.pinned or item.recurrence is not None or item.due_date > today:"
 label = "park: drop the None guard"
 
 [[mutant]]
 file = "todoist_cli/planner.py"
-old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:"
-new = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date > today or True:"
+old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date > today:"
+new = "if True:"
 label = "park: skip everything (the whole function becomes a no-op)"
 
 [[mutant]]
@@ -57,9 +57,33 @@ label = "park: always overwrite (clobbers the dates the packer chose)"
 
 [[mutant]]
 file = "todoist_cli/planner.py"
-old = "parked[item.id] = parking_day"
-new = "parked[item.id] = today"
-label = "park: park on today instead of the last day of the horizon"
+old = "parked[item.id] = parking_day if item.deadline is not None else beyond"
+new = "parked[item.id] = today if item.deadline is not None else beyond"
+label = "park: deadline work parked on today instead of the last day of the horizon"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "parked[item.id] = parking_day if item.deadline is not None else beyond"
+new = "parked[item.id] = parking_day if item.deadline is None else beyond"
+label = "park: deadline test inverted (deadline work leaves the week, the rest stays)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "parked[item.id] = parking_day if item.deadline is not None else beyond"
+new = "parked[item.id] = parking_day"
+label = "park: everything on the last day (work with no deadline stays in the week)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "    while day.weekday() >= 5:"
+new = "    while day.weekday() > 5:"
+label = "next_weekday: >= 5 -> > 5 (a Friday horizon parks on Saturday)"
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "    while day.weekday() >= 5:"
+new = "    if day.weekday() >= 5:"
+label = "next_weekday: while -> if (Friday parks on Sunday)"
 
 [[mutant]]
 file = "todoist_cli/planner.py"
@@ -397,8 +421,8 @@ label = "pinning: @Fixed no longer matches"
 
 [[mutant]]
 file = "todoist_cli/planner.py"
-old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:"
-new = "if item.pinned or item.due_date is None or item.due_date >= today:"
+old = "if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date > today:"
+new = "if item.pinned or item.due_date is None or item.due_date > today:"
 label = "park: overdue recurring tasks parked a week out"
 
 [[mutant]]

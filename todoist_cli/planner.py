@@ -762,35 +762,49 @@ def earliest_scheduled_dates(result: PlanResult, buckets: list[date]) -> dict[st
     return earliest
 
 
+def next_weekday(day: date) -> date:
+    """The first weekday after `day`."""
+    day += timedelta(days=1)
+    while day.weekday() >= 5:
+        day += timedelta(days=1)
+    return day
+
+
 def park_overdue_dates(
     final_dates: dict[str, date], items: list[Item], today: date, parking_day: date
 ) -> dict[str, date]:
-    """Move any date still landing before `today` onto `parking_day`.
+    """Re-date work the plan left on today or in the past.
 
     A due date says when you intend to work on something, so yesterday is not a
     plan — unlike a deadline, which is a commitment and stays in the past once
-    missed (and which this command never writes at all). Anything the packing
-    passes placed already holds a bucket date, which is today or later by
-    construction, so this covers the two ways an overdue date survives a run:
-    an item that got no slot because every bucket was full, and an explicit past
-    date typed into the editor. Both are parked on `parking_day` — the last day
-    of the horizon — since neither is work the plan found room for; parking them
-    on today would only crowd the day that was already full.
+    missed (and which this command never writes at all). Nor is today, once the
+    plan found no room for it there: leaving it would show today holding far
+    more work than it has time for. Anything the packing passes placed already
+    holds a bucket date, which is today or later by construction, so this
+    covers the two ways such a date survives a run: an item that got no slot
+    because every bucket was full, and an explicit date typed into the editor
+    (only a past one: typing today means "do it today").
+
+    Where it goes depends on whether it has a deadline. One that does is parked
+    on `parking_day` — the last day of the horizon — so it stays in view while
+    it is still this week's problem. One that doesn't is parked on the first
+    weekday after it, out of the week: nothing says it must happen now, and the
+    next plan picks it up again as days open up.
 
     Pinned items are skipped: their due dates are never written back, because
     the only field available is `due_date`, which would drop a time of day.
     Recurring items are skipped too: parking one a week out would skip its
     occurrences in between, which is a decision, not a correction. An item with
-    no due date at all is skipped as well — there is nothing in the past to
-    correct.
+    no due date at all is skipped as well — there is nothing to correct.
     """
     parked = dict(final_dates)
+    beyond = next_weekday(parking_day)
     for item in items:
-        if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date >= today:
+        if item.pinned or item.recurrence is not None or item.due_date is None or item.due_date > today:
             continue
         current = parked.get(item.id)
         if current is None or current < today:
-            parked[item.id] = parking_day
+            parked[item.id] = parking_day if item.deadline is not None else beyond
     return parked
 
 

@@ -106,7 +106,7 @@ What happens on a run:
 5. **Approve, edit or quit.** `e` opens the plan in `$VISUAL`/`$EDITOR` as a tab-separated list with one task per line. Change the date column to move a task, or set it to `-` to leave the task's date alone.
 6. **Apply.** Due dates are written back and the `atrisk` label is synced: added to tasks at risk now, removed from tasks that no longer are. Before anything is written, every change and its old value go to a log file in `plan_logs/`, so a run can be undone by hand. If an update fails, `plan` reports it and exits non-zero.
 
-`plan` never writes deadlines, and never rewrites a pinned task. A due date left in the past is moved to the last day of the horizon: a due date says when you intend to do something, and yesterday isn't a plan. Missed deadlines are left as they are.
+`plan` never writes deadlines, and never rewrites a pinned task. A task due today or earlier that the plan found no room for gets a new due date: a due date says when you intend to do something, and neither yesterday nor an already-full today is a plan. If it has a deadline it goes to the last day of the horizon, so it stays in view; if not, it goes to the first weekday past the horizon, and a later plan picks it up as days open up. Missed deadlines are left as they are.
 
 ## `todoist start`
 

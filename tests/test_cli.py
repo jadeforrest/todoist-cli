@@ -2106,6 +2106,8 @@ class TestPlanOverdueDates:
     """
 
     OVERDUE = "2026-07-20"
+    # Where work with no deadline is parked: the first weekday past the horizon.
+    BEYOND = planner.next_weekday(PLAN_BUCKETS[-1])
 
     def _run(self, tasks, tmp_path, *, argv_extra=(), inputs=("", "y"), projects=None, editor=None):
         stdin_p, stdout_p = _interactive()
@@ -2147,18 +2149,26 @@ class TestPlanOverdueDates:
                 cli.main()
         instance.update_task.assert_called_once_with("t1", due_date=PLAN_BUCKETS[0].isoformat())
 
-    def test_overdue_task_that_fits_nowhere_is_parked_on_the_last_day(self, tmp_path):
+    def test_overdue_task_that_fits_nowhere_is_parked_past_the_horizon(self, tmp_path):
         task = _plan_task("t1", "Overdue thing", priority=2, due_date=self.OVERDUE, project_id="inbox-1")
         instance = self._run([task], tmp_path)
-        instance.update_task.assert_any_call("t1", due_date=PLAN_BUCKETS[-1].isoformat())
+        instance.update_task.assert_any_call("t1", due_date=self.BEYOND.isoformat())
         # Parked, not scheduled — it still carries the label saying so.
         instance.update_task.assert_any_call("t1", labels=["atrisk"])
+
+    def test_overdue_task_with_a_deadline_is_parked_on_the_last_day(self, tmp_path):
+        task = _plan_task(
+            "t1", "Overdue thing", priority=2, due_date=self.OVERDUE,
+            deadline="2026-08-20", project_id="inbox-1",
+        )
+        instance = self._run([task], tmp_path)
+        instance.update_task.assert_any_call("t1", due_date=PLAN_BUCKETS[-1].isoformat())
 
     def test_parking_shows_an_arrow_and_writes_nothing_in_a_dry_run(self, capsys, tmp_path):
         task = _plan_task("t1", "Overdue thing", priority=2, due_date=self.OVERDUE, project_id="inbox-1")
         instance = self._run([task], tmp_path, argv_extra=["--dry-run"])
         instance.update_task.assert_not_called()
-        assert f"(Jul 20 -> {PLAN_BUCKETS[-1].strftime('%b %-d')})" in capsys.readouterr().out
+        assert f"(Jul 20 -> {self.BEYOND.strftime('%b %-d')})" in capsys.readouterr().out
 
     def test_editor_dash_still_parks_an_overdue_task(self, tmp_path):
         # "-" means "the plan isn't scheduling this", not "leave it in the past".
@@ -2166,7 +2176,7 @@ class TestPlanOverdueDates:
         instance = self._run(
             [task], tmp_path, inputs=["", "e", "y"], editor="t1\t-\tP2\t30m\tOverdue thing\n"
         )
-        instance.update_task.assert_any_call("t1", due_date=PLAN_BUCKETS[-1].isoformat())
+        instance.update_task.assert_any_call("t1", due_date=self.BEYOND.isoformat())
 
     def test_future_dated_task_that_fits_nowhere_keeps_its_date(self, tmp_path):
         task = _plan_task(
@@ -2176,14 +2186,14 @@ class TestPlanOverdueDates:
         instance = self._run([task], tmp_path)
         assert [c for c in instance.update_task.call_args_list if "due_date" in c.kwargs] == []
 
-    def test_task_due_today_that_fits_nowhere_keeps_its_date(self, tmp_path):
-        # Today is not the past: nothing to correct.
+    def test_task_due_today_that_fits_nowhere_is_parked_too(self, tmp_path):
+        # Left on today, it would show today holding work it has no time for.
         task = _plan_task(
             "t1", "Today thing", priority=2,
             due_date=PLAN_FIXED_NOW.date().isoformat(), project_id="inbox-1",
         )
         instance = self._run([task], tmp_path)
-        assert [c for c in instance.update_task.call_args_list if "due_date" in c.kwargs] == []
+        instance.update_task.assert_any_call("t1", due_date=self.BEYOND.isoformat())
 
     def test_overdue_recurring_task_is_not_parked(self, tmp_path):
         # Writing due_date would drop the recurrence pattern, and parking it at
@@ -2208,7 +2218,7 @@ class TestPlanOverdueDates:
                 {"id": "proj-other", "name": "Other", "inbox_project": False},
             ],
         )
-        instance.update_task.assert_any_call("t1", due_date=PLAN_BUCKETS[-1].isoformat())
+        instance.update_task.assert_any_call("t1", due_date=self.BEYOND.isoformat())
 
     def test_undated_task_that_fits_nowhere_is_not_given_a_date(self, tmp_path):
         task = _plan_task("t1", "Someday thing", priority=2, project_id="inbox-1")
@@ -2219,7 +2229,7 @@ class TestPlanOverdueDates:
         task = _plan_task("t1", "Overdue thing", priority=2, due_date=self.OVERDUE, project_id="inbox-1")
         self._run([task], tmp_path)
         log = next(iter(tmp_path.glob("plan-*.txt")))
-        assert f"t1\t{PLAN_BUCKETS[-1].isoformat()}\t{self.OVERDUE}\tOverdue thing" in log.read_text()
+        assert f"t1\t{self.BEYOND.isoformat()}\t{self.OVERDUE}\tOverdue thing" in log.read_text()
 
 
 class TestPlanLogAndFailures:

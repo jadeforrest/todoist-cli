@@ -96,7 +96,8 @@ same logic as the `todoist` CLI.
   day's capacity (`1h30m`, `0`, empty to reset). Overrides last until the app
   quits.
 - **Plan** runs `planner.pack` and shows the proposal (the CLI's final dates,
-  including parking overdue work on the last day). The window is tinted and a
+  including parking work left on today or earlier that found no room: on the
+  last day if it has a deadline, past the horizon if not). The window is tinted and a
   "Planning" banner shows until Confirm or Cancel; moved tasks show old → new.
 - Confirm writes a plan log (same format as the CLI), applies dates and the
   `atrisk` label changes. Dates are applied only to tasks that are still
