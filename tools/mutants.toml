@@ -444,3 +444,47 @@ file = "todoist_cli/planner.py"
 old = "        timezone=ZoneInfo(data[\"timezone\"]) if data[\"timezone\"] else local_timezone(),"
 new = "        timezone=ZoneInfo(data[\"timezone\"]) if data[\"timezone\"] else ZoneInfo(\"UTC\"),"
 label = "config: missing timezone falls back to UTC instead of the local zone"
+
+# --- ported 2026-11-16: size hints, pagination, POST plumbing ----------------
+
+[[mutant]]
+file = "todoist_cli/planner.py"
+old = "    return content[: run[0][0]] + hint + content[run[-1][1] :]"
+new = "    return content[: run[-1][0]] + hint + content[run[-1][1] :]"
+label = "ported size hint: replaces only the last token of a glued run"
+
+[[mutant]]
+file = "todoist_cli/client.py"
+old = "            page_params = {**params, \"cursor\": next_cursor}"
+new = "            page_params = {\"cursor\": next_cursor}"
+label = "ported pagination: later pages drop the original params"
+
+[[mutant]]
+file = "todoist_cli/client.py"
+old = "            page_params = {**params, \"cursor\": next_cursor}"
+new = "            page_params = dict(params)"
+label = "ported pagination: cursor never sent"
+
+[[mutant]]
+file = "todoist_cli/client.py"
+old = "        kwargs = {} if payload is None else {\"json\": payload}"
+new = "        kwargs = {} if not payload else {\"json\": payload}"
+label = "ported POST: an empty payload is sent with no JSON body"
+
+[[mutant]]
+file = "todoist_cli/client.py"
+old = "            payload[\"duration_unit\"] = \"minute\""
+new = "            payload[\"duration_unit\"] = \"day\""
+label = "ported update_task: duration unit"
+
+[[mutant]]
+file = "todoist_cli/client.py"
+old = "        if clear_deadline:\n            if deadline_date is not None:"
+new = "        if clear_deadline:\n            if deadline_date is None:"
+label = "ported update_task: clear_deadline guard inverted"
+
+[[mutant]]
+file = "todoist_cli/client.py"
+old = "            payload[\"deadline_date\"] = None\n"
+new = "            pass\n"
+label = "ported update_task: clear_deadline sends nothing"
