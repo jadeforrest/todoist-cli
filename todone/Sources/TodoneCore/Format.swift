@@ -1,6 +1,18 @@
 import Foundation
 
 public enum Format {
+    /// The orange banner's text when the calendar can't be read.
+    public static func calendarBanner(error: String, reauth: String?) -> String {
+        switch reauth {
+        case "running":
+            return "Google sign-in expired. Approve the consent screen in your browser to reconnect the calendar."
+        case "failed":
+            return "Calendar unavailable, and re-authorization didn't finish. Refresh (⌘R) to try again, or run gog-reauth. \(error)"
+        default:
+            return "Calendar unavailable, so free time is unknown: \(error)"
+        }
+    }
+
     /// "2h 3m", "45m", "0m"; "—" when unknown.
     public static func minutes(_ value: Int?) -> String {
         guard let value else { return "—" }

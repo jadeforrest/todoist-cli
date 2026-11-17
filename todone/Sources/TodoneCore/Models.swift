@@ -7,6 +7,9 @@ public struct Snapshot: Decodable, Sendable, Equatable {
     public var today: String
     public var planning: Bool
     public var calendarError: String?
+    /// "running" while the helper's Google re-authorization waits on the
+    /// browser consent screen, "failed" once it gave up; nil otherwise.
+    public var calendarReauth: String?
     public var todayColumn: Column
     public var overdue: [TaskItem]
     public var todayTasks: [TaskItem]

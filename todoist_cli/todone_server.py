@@ -78,6 +78,7 @@ def real_services(config_path: Path) -> Services:
         write_event=write_event,
         now=lambda: datetime.now().astimezone(),
         calendar_help=lambda message: tracker.gog_error_help(message, account),
+        reauth=lambda: tracker.run_reauth_detached(account),
     )
 
 

@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     let fakeMode: Bool
     private var helper: Helper?
     private var refreshTimer: Timer?
+    private var reauthPoll: Task<Void, Never>?
     private var keyMonitor: Any?
 
     init() {
@@ -80,6 +81,18 @@ final class AppModel: ObservableObject {
         snapshot = snap
         errorMessage = nil
         notice = snap.result.map(Self.describe) ?? notice
+        if snap.calendarReauth == "running" { pollWhileReauthorizing() }
+    }
+
+    /// The helper re-authorizes in the background; check back until it's done
+    /// so the calendar returns without waiting for the 15-minute refresh.
+    private func pollWhileReauthorizing() {
+        guard reauthPoll == nil else { return }
+        reauthPoll = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            self?.reauthPoll = nil
+            await self?.refresh()
+        }
     }
 
     private func requireHelper() throws -> Helper {

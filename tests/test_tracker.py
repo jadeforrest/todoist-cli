@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+import sys
 from datetime import date, datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
@@ -690,6 +691,31 @@ class TestRunReauth:
     def test_ctrl_c_during_consent_is_not_a_crash(self):
         with patch("subprocess.run", side_effect=KeyboardInterrupt()):
             assert tracker.run_reauth(ACCOUNT) is False
+
+
+class TestRunReauthDetached:
+    def test_keeps_stdout_clean_and_stdin_closed(self):
+        with patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
+            assert tracker.run_reauth_detached(ACCOUNT, timeout=5) is True
+        kwargs = mock_run.call_args.kwargs
+        assert mock_run.call_args[0][0] == [tracker.REAUTH_COMMAND, ACCOUNT]
+        # The Todone helper's stdout is its JSON protocol; the wrapper must not write there.
+        assert kwargs["stdout"] is sys.stderr and kwargs["stdin"] is subprocess.DEVNULL
+        assert kwargs["timeout"] == 5
+
+    def test_nonzero_exit_is_a_failure(self):
+        with patch("subprocess.run", return_value=MagicMock(returncode=1)):
+            assert tracker.run_reauth_detached(ACCOUNT) is False
+
+    def test_unanswered_consent_times_out(self, capsys):
+        with patch("subprocess.run", side_effect=subprocess.TimeoutExpired("gog-reauth", 1)):
+            assert tracker.run_reauth_detached(ACCOUNT) is False
+        assert "timed out" in capsys.readouterr().err
+
+    def test_missing_wrapper_explains_how_to_install_it(self, capsys):
+        with patch("subprocess.run", side_effect=FileNotFoundError()):
+            assert tracker.run_reauth_detached(ACCOUNT) is False
+        assert f"bin/{tracker.REAUTH_COMMAND}" in capsys.readouterr().err
 
 
 class TestReauthHelp:

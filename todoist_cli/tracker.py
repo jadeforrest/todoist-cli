@@ -827,16 +827,49 @@ def run_reauth(account: str) -> bool:
     try:
         result = subprocess.run([REAUTH_COMMAND, account])
     except FileNotFoundError:
-        print(
-            f"`{REAUTH_COMMAND}` isn't on PATH. Installing todoist-cli with pip or pipx\n"
-            f"puts it there; from a source checkout, link bin/{REAUTH_COMMAND} into ~/.local/bin.",
-            file=sys.stderr,
-        )
+        _print_reauth_missing()
         return False
     except KeyboardInterrupt:
         print("\nRe-authentication cancelled.", file=sys.stderr)
         return False
     return result.returncode == 0
+
+
+# How long a detached reauth waits for the user to approve the consent screen.
+DETACHED_REAUTH_TIMEOUT = 10 * 60
+
+
+def run_reauth_detached(account: str, timeout: float = DETACHED_REAUTH_TIMEOUT) -> bool:
+    """Run `gog-reauth` with no terminal (for the Todone helper). True on success.
+
+    gog opens the browser consent screen itself. The wrapper's output goes to
+    stderr because the helper's stdout carries its JSON protocol, and stdin is
+    closed so nothing can block on a prompt. A consent screen left unanswered
+    times out rather than leaving the helper waiting forever.
+    """
+    try:
+        result = subprocess.run(
+            [REAUTH_COMMAND, account],
+            stdin=subprocess.DEVNULL,
+            stdout=sys.stderr,
+            stderr=sys.stderr,
+            timeout=timeout,
+        )
+    except FileNotFoundError:
+        _print_reauth_missing()
+        return False
+    except subprocess.TimeoutExpired:
+        print("Re-authentication timed out waiting for the consent screen.", file=sys.stderr)
+        return False
+    return result.returncode == 0
+
+
+def _print_reauth_missing() -> None:
+    print(
+        f"`{REAUTH_COMMAND}` isn't on PATH. Installing todoist-cli with pip or pipx\n"
+        f"puts it there; from a source checkout, link bin/{REAUTH_COMMAND} into ~/.local/bin.",
+        file=sys.stderr,
+    )
 
 
 def calendar_event_command(

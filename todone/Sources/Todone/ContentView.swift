@@ -177,7 +177,8 @@ struct MessageBanners: View {
                 Banner(text: error, color: .red) { model.errorMessage = nil }
             }
             if let calendar = model.snapshot?.calendarError {
-                Banner(text: "Calendar unavailable, so free time is unknown: \(calendar)", color: .orange, dismiss: nil)
+                Banner(text: Format.calendarBanner(error: calendar, reauth: model.snapshot?.calendarReauth),
+                       color: .orange, dismiss: nil)
             }
             if let notice = model.notice {
                 Banner(text: notice, color: .green) { model.notice = nil }

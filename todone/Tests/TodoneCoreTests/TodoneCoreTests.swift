@@ -3,6 +3,15 @@ import XCTest
 @testable import TodoneCore
 
 final class FormatTests: XCTestCase {
+    func testCalendarBannerFollowsReauthState() {
+        XCTAssertTrue(Format.calendarBanner(error: "boom", reauth: "running").contains("consent screen"))
+        XCTAssertFalse(Format.calendarBanner(error: "boom", reauth: "running").contains("boom"))
+        XCTAssertTrue(Format.calendarBanner(error: "boom", reauth: "failed").hasSuffix("boom"))
+        XCTAssertTrue(Format.calendarBanner(error: "boom", reauth: "failed").contains("gog-reauth"))
+        XCTAssertEqual(Format.calendarBanner(error: "boom", reauth: nil),
+                       "Calendar unavailable, so free time is unknown: boom")
+    }
+
     func testMinutes() {
         XCTAssertEqual(Format.minutes(nil), "—")
         XCTAssertEqual(Format.minutes(0), "0m")

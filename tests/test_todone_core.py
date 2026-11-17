@@ -3,6 +3,7 @@
 import dataclasses
 import io
 import json
+import time
 from datetime import date, datetime, timedelta
 from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
@@ -122,6 +123,63 @@ class TestSnapshot:
         assert snap["calendar_error"] == "token expired"
         assert snap["today_column"]["capacity_minutes"] is None
         assert not any(t["at_risk"] for t in _all_tasks(snap))
+
+
+EXPIRED = 'oauth2: "invalid_grant" "Token has been expired or revoked."'
+
+
+def reauth_app(busy_error=EXPIRED, outcomes=(True,)):
+    """An app whose calendar fails with `busy_error` and whose reauth returns `outcomes` in turn."""
+    app = make_app(busy_error=busy_error)
+    app.reauth_calls, app.deferred = [], []
+    results = iter(outcomes)
+    app.services.reauth = lambda: app.reauth_calls.append(1) or next(results)
+    # Hold background work until the test runs it, as a real consent screen would.
+    app.services.run_in_background = app.deferred.append
+    return app
+
+
+class TestAutoReauth:
+    def test_expired_token_starts_one_reauth(self):
+        app = reauth_app()
+        assert app.refresh()["calendar_reauth"] == "running"
+        app.refresh(force_calendar=True)
+        assert len(app.deferred) == 1  # a second refresh doesn't open another consent screen
+
+    def test_success_clears_state_so_the_next_refresh_reads_the_calendar(self):
+        app = reauth_app()
+        app.refresh()
+        app.deferred[0]()
+        assert app.calendar_reauth is None and app.reauth_calls == [1]
+
+    def test_failure_waits_for_a_forced_refresh(self):
+        app = reauth_app(outcomes=(False, True))
+        app.refresh()
+        app.deferred.pop()()
+        assert app.refresh()["calendar_reauth"] == "failed"
+        assert app.deferred == []  # the timer's plain refresh doesn't retry
+        assert app.refresh(force_calendar=True)["calendar_reauth"] == "running"
+        assert len(app.deferred) == 1
+
+    @pytest.mark.parametrize("message", ["network is unreachable", "calendar not found: team"])
+    def test_errors_reauth_cant_fix_dont_start_one(self, message):
+        app = reauth_app(busy_error=message)
+        assert app.refresh()["calendar_reauth"] is None
+        assert app.deferred == []
+
+    def test_no_reauth_service_means_no_attempt(self):
+        snap = make_app(busy_error=EXPIRED).refresh()
+        assert snap["calendar_reauth"] is None
+
+    def test_default_background_runner_uses_a_thread(self):
+        done = []
+        services = make_app().services
+        services.run_in_background(lambda: done.append(1))
+        for _ in range(100):
+            if done:
+                break
+            time.sleep(0.01)
+        assert done == [1]
 
 
 def _all_tasks(snap):
@@ -643,6 +701,8 @@ class TestServer:
         assert services.write_event("t", 1, 2, color=3) == (True, "ok")
         assert calls[1] == {"description": None, "account": "me@example.com", "event_color": 3}
         assert "me@example.com" in services.calendar_help("insufficient authentication scopes")
+        monkeypatch.setattr(todone_server.tracker, "run_reauth_detached", lambda a: calls.append(a) or True)
+        assert services.reauth() is True and calls[-1] == "me@example.com"
         assert services.now().tzinfo is not None
 
     def test_stop_failure_includes_calendar_help(self):

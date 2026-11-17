@@ -14,6 +14,7 @@ in-memory versions.
 from __future__ import annotations
 
 import dataclasses
+import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any, Callable
@@ -37,6 +38,14 @@ class Services:
     apply_plan: Callable[..., tuple] = cli._apply_plan
     # gog error message -> what to do about it, or None when unrecognized.
     calendar_help: Callable[[str], str | None] = lambda message: None
+    # Re-authorizes the calendar account (blocking until the user approves or it
+    # fails); True on success. None means no automatic reauth (tests, --fake).
+    reauth: Callable[[], bool] | None = None
+    # Runs `fn` off the request thread, so a pending consent screen doesn't
+    # stall the app. Tests swap in a synchronous version.
+    run_in_background: Callable[[Callable[[], None]], None] = (
+        lambda fn: threading.Thread(target=fn, daemon=True).start()
+    )
 
 
 @dataclass
@@ -88,6 +97,8 @@ class Todone:
     timers: dict[str, Timer] = field(default_factory=dict)
     draft: Draft | None = None
     calendar_error: str | None = None
+    # None, "running" (consent screen open) or "failed" (gave up until a forced refresh).
+    calendar_reauth: str | None = None
     _busy: _Busy | None = None
     _log_count: int = 0
 
@@ -122,6 +133,8 @@ class Todone:
         )
         if fresh and not force:
             return
+        if force and self.calendar_reauth == "failed":
+            self.calendar_reauth = None
         start = datetime.combine(window[0], time.min, tz)
         end = datetime.combine(window[1] + timedelta(days=1), time.min, tz)
         try:
@@ -129,9 +142,25 @@ class Todone:
         except RuntimeError as exc:
             self.calendar_error = str(exc)
             self._busy = None
+            self._maybe_reauth(self.calendar_error)
             return
         self.calendar_error = None
         self._busy = _Busy(now, window, intervals)
+
+    def _maybe_reauth(self, message: str) -> None:
+        """Start one background reauth when the calendar failed on an expired token."""
+        reauth = self.services.reauth
+        if reauth is None or self.calendar_reauth is not None:
+            return
+        if tracker.gog_error_kind(message) not in tracker.REAUTHABLE_KINDS:
+            return
+        self.calendar_reauth = "running"
+
+        def attempt() -> None:
+            # On success the next refresh refetches: there is no cached calendar.
+            self.calendar_reauth = None if reauth() else "failed"
+
+        self.services.run_in_background(attempt)
 
     def _capacity(self) -> dict[date, int] | None:
         """Free minutes per planned day, with the user's overrides; None without a calendar."""
@@ -186,6 +215,7 @@ class Todone:
             "today": today.isoformat(),
             "planning": self.draft is not None,
             "calendar_error": self.calendar_error,
+            "calendar_reauth": self.calendar_reauth,
             "today_column": self._column(today, today_ids, capacity, minutes_on(today)),
             "overdue": [views[i] for i in placement["overdue"]],
             "today_tasks": [views[i] for i in placement["today"]],
